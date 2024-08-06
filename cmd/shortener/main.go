@@ -8,15 +8,21 @@ import (
 	"net/url"
 )
 
-var urlHashMap = make(map[string]string)
+type UrlStore struct {
+	urls map[string]string
+}
+
+func NewUrlStore() *UrlStore {
+	return &UrlStore{urls: make(map[string]string)}
+}
 
 func isValidUrl(urlToValid string) bool {
 	_, err := url.ParseRequestURI(urlToValid)
 	return err == nil
 }
 
-func isValidHash(hash string) bool {
-	_, ok := urlHashMap[hash]
+func isValidHash(hash string, urls map[string]string) bool {
+	_, ok := urls[hash]
 	return ok
 }
 
@@ -26,7 +32,7 @@ func hashUrl(url string) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))[:8]
 }
 
-func shortUrl(w http.ResponseWriter, req *http.Request) {
+func (u *UrlStore) shortUrl(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
 		return
@@ -46,8 +52,8 @@ func shortUrl(w http.ResponseWriter, req *http.Request) {
 	}
 
 	urlHash := hashUrl(urlString)
-	if _, ok := urlHashMap[urlString]; !ok {
-		urlHashMap[urlHash] = urlString
+	if _, ok := u.urls[urlString]; !ok {
+		u.urls[urlHash] = urlString
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
@@ -56,7 +62,7 @@ func shortUrl(w http.ResponseWriter, req *http.Request) {
 	_, _ = w.Write([]byte("http://localhost:8080/" + string(urlHash)))
 }
 
-func getShortUrl(w http.ResponseWriter, req *http.Request) {
+func (u *UrlStore) getShortUrl(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
 		return
@@ -64,20 +70,23 @@ func getShortUrl(w http.ResponseWriter, req *http.Request) {
 
 	urlHash := req.PathValue("id")
 
-	if !isValidHash(urlHash) {
+	if !isValidHash(urlHash, u.urls) {
 		http.Error(w, "Invalid URL.", http.StatusBadRequest)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("Location", urlHashMap[urlHash])
+	w.Header().Set("Location", u.urls[urlHash])
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
 func main() {
+	urlStore := NewUrlStore()
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", shortUrl)
-	mux.HandleFunc("/{id}/", getShortUrl)
+	mux.HandleFunc("/", urlStore.shortUrl)
+	mux.HandleFunc("/{id}/", urlStore.getShortUrl)
+
 	err := http.ListenAndServe(":8080", mux)
 	if err != nil {
 		panic(err)
