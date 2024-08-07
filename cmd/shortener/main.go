@@ -85,7 +85,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", urlStore.shortURL)
-	mux.HandleFunc("/{id}/", urlStore.getShortURL)
+	mux.HandleFunc("/{id}", urlStore.getShortURL)
 
 	err := http.ListenAndServe(":8080", mux)
 	if err != nil {
