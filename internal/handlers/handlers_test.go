@@ -172,7 +172,7 @@ func TestGetShortURL(t *testing.T) {
 		expectedCode   int
 		expectedHeader header
 		expectedBody   string
-		shortUrl       string
+		shortURL       string
 	}{
 		{
 			name:           "non-existent short url",
@@ -180,25 +180,26 @@ func TestGetShortURL(t *testing.T) {
 			expectedCode:   http.StatusBadRequest,
 			expectedHeader: header{contentType: "text/plain; charset=utf-8"},
 			expectedBody:   "Invalid URL.\n",
-			shortUrl:       "12345678",
+			shortURL:       "12345678",
 		},
 		{
 			name:           "existent short url",
 			storage:        storage.URLStore{Urls: map[string]string{utils.HashURL("https://yandex.com"): "https://yandex.com"}},
 			expectedCode:   http.StatusTemporaryRedirect,
 			expectedHeader: header{contentType: "text/plain", location: "https://yandex.com"},
-			shortUrl:       utils.HashURL("https://yandex.com"),
+			shortURL:       utils.HashURL("https://yandex.com"),
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "http://localhost:8080", nil)
-			r.SetPathValue("id", test.shortUrl)
+			r.SetPathValue("id", test.shortURL)
 			w := httptest.NewRecorder()
 
 			GetShortURL(&test.storage).ServeHTTP(w, r)
 
 			res := w.Result()
+			defer res.Body.Close()
 
 			assert.Equal(t, test.expectedCode, res.StatusCode, "Wrong response code status")
 			assert.Equal(t, test.expectedHeader.contentType, res.Header.Get("Content-Type"), "Wrong content type")
