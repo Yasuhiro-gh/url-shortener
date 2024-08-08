@@ -28,7 +28,7 @@ func ShortURL(us *storage.URLStore) http.Handler {
 		}
 
 		urlHash := utils.HashURL(urlString)
-		if _, ok := us.Urls[urlString]; !ok {
+		if !utils.IsHashExist(urlHash, us.Urls) {
 			us.Urls[urlHash] = urlString
 		}
 
