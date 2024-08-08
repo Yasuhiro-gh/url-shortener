@@ -48,6 +48,11 @@ func GetShortURL(us *storage.URLStore) http.Handler {
 
 		urlHash := r.PathValue("id")
 
+		if urlHash == "" {
+			http.Error(w, "Please provide a URL.", http.StatusBadRequest)
+			return
+		}
+
 		if !utils.IsHashExist(urlHash, us.Urls) {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
