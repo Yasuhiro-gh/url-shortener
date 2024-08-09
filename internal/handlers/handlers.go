@@ -54,20 +54,20 @@ func GetShortURL(us *storage.URLStore) http.HandlerFunc {
 			return
 		}
 
-		shortUrl := r.PathValue("id")
+		shortURL := r.PathValue("id")
 
-		if shortUrl == "" {
+		if shortURL == "" {
 			http.Error(w, "Please provide a URL.", http.StatusBadRequest)
 			return
 		}
 
-		if !utils.IsHashExist(shortUrl, us.Urls) {
+		if !utils.IsHashExist(shortURL, us.Urls) {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("Location", us.Urls[shortUrl])
+		w.Header().Set("Location", us.Urls[shortURL])
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	}
 }
