@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/Yasuhiro-gh/url-shortener/internal/config"
 	"github.com/Yasuhiro-gh/url-shortener/internal/storage"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/go-chi/chi/v5"
@@ -43,7 +44,7 @@ func ShortURL(us *storage.URLStore) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
 
-		_, _ = w.Write([]byte("http://localhost:8080/" + string(urlHash)))
+		_, _ = w.Write([]byte(config.Options.BaseAddr + "/" + urlHash))
 	}
 }
 
