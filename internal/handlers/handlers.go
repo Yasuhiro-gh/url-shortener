@@ -3,12 +3,20 @@ package handlers
 import (
 	"github.com/Yasuhiro-gh/url-shortener/internal/storage"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
+	"github.com/go-chi/chi/v5"
 	"io"
 	"net/http"
 )
 
-func ShortURL(us *storage.URLStore) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func URLRouter(us *storage.URLStore) chi.Router {
+	r := chi.NewRouter()
+	r.HandleFunc("/", ShortURL(us))
+	r.HandleFunc("/{id}", GetShortURL(us))
+	return r
+}
+
+func ShortURL(us *storage.URLStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
 			return
@@ -36,30 +44,30 @@ func ShortURL(us *storage.URLStore) http.Handler {
 		w.WriteHeader(http.StatusCreated)
 
 		_, _ = w.Write([]byte("http://localhost:8080/" + string(urlHash)))
-	})
+	}
 }
 
-func GetShortURL(us *storage.URLStore) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func GetShortURL(us *storage.URLStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
 			return
 		}
 
-		urlHash := r.PathValue("id")
+		shortUrl := r.PathValue("id")
 
-		if urlHash == "" {
+		if shortUrl == "" {
 			http.Error(w, "Please provide a URL.", http.StatusBadRequest)
 			return
 		}
 
-		if !utils.IsHashExist(urlHash, us.Urls) {
+		if !utils.IsHashExist(shortUrl, us.Urls) {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("Location", us.Urls[urlHash])
+		w.Header().Set("Location", us.Urls[shortUrl])
 		w.WriteHeader(http.StatusTemporaryRedirect)
-	})
+	}
 }

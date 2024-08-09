@@ -9,11 +9,7 @@ import (
 func Run() {
 	urlStore := storage.NewURLStore()
 
-	mux := http.NewServeMux()
-	mux.Handle("/", handlers.ShortURL(urlStore))
-	mux.Handle("/{id}", handlers.GetShortURL(urlStore))
-
-	err := http.ListenAndServe(":8080", mux)
+	err := http.ListenAndServe(":8080", handlers.URLRouter(urlStore))
 	if err != nil {
 		panic(err)
 	}
