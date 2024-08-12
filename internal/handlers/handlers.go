@@ -44,7 +44,7 @@ func ShortURL(us *storage.URLStore) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
 
-		_, _ = w.Write([]byte(config.Options.BaseAddr + "/" + urlHash))
+		_, _ = w.Write([]byte(config.Options.BaseURL + "/" + urlHash))
 	}
 }
 
