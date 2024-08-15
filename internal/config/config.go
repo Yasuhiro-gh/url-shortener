@@ -10,9 +10,11 @@ var Options struct {
 	BaseURL string
 }
 
-func init() {
+func Run() {
 	flag.StringVar(&Options.Addr, "a", "localhost:8080", "http server address")
 	flag.StringVar(&Options.BaseURL, "b", "http://localhost:8080", "base url")
+
+	flag.Parse()
 
 	if servAddr := os.Getenv("SERVER_ADDRESS"); servAddr != "" {
 		Options.Addr = servAddr
