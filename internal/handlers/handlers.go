@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
-	"github.com/Yasuhiro-gh/url-shortener/internal/storage"
+	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/go-chi/chi/v5"
 	"io"
