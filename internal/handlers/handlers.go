@@ -9,14 +9,14 @@ import (
 	"net/http"
 )
 
-func URLRouter(us *storage.URLStore) chi.Router {
+func URLRouter(us *storage.URLS) chi.Router {
 	r := chi.NewRouter()
 	r.HandleFunc("/", ShortURL(us))
 	r.HandleFunc("/{id}", GetShortURL(us))
 	return r
 }
 
-func ShortURL(us *storage.URLStore) http.HandlerFunc {
+func ShortURL(us *storage.URLS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
@@ -37,8 +37,8 @@ func ShortURL(us *storage.URLStore) http.HandlerFunc {
 		}
 
 		urlHash := utils.HashURL(urlString)
-		if !utils.IsHashExist(urlHash, us.Urls) {
-			us.Urls[urlHash] = urlString
+		if _, exist := us.Get(urlHash); !exist {
+			us.Set(urlHash, urlString)
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
@@ -48,7 +48,7 @@ func ShortURL(us *storage.URLStore) http.HandlerFunc {
 	}
 }
 
-func GetShortURL(us *storage.URLStore) http.HandlerFunc {
+func GetShortURL(us *storage.URLS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
@@ -62,13 +62,14 @@ func GetShortURL(us *storage.URLStore) http.HandlerFunc {
 			return
 		}
 
-		if !utils.IsHashExist(shortURL, us.Urls) {
+		url, exist := us.Get(shortURL)
+		if !exist {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("Location", us.Urls[shortURL])
+		w.Header().Set("Location", url)
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	}
 }

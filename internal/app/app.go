@@ -10,8 +10,9 @@ import (
 func Run() {
 	config.Run()
 
-	urlStore := storage.NewURLStore()
-	err := http.ListenAndServe(config.Options.Addr, handlers.URLRouter(urlStore))
+	us := storage.NewURLStorage()
+	urls := storage.NewURLS(us)
+	err := http.ListenAndServe(config.Options.Addr, handlers.URLRouter(urls))
 	if err != nil {
 		panic(err)
 	}

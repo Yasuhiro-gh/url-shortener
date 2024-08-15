@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/Yasuhiro-gh/url-shortener/internal/config"
 	"github.com/Yasuhiro-gh/url-shortener/internal/storage"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/stretchr/testify/assert"
@@ -8,37 +9,56 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
 
+type mockURLS struct {
+	shortURL string
+	fullURL  string
+}
+
+func TestMain(m *testing.M) {
+	config.Run()
+	os.Exit(m.Run())
+}
+
+func NewMockMapURLS(urls ...mockURLS) *storage.URLS {
+	us := storage.NewURLStorage()
+	for _, url := range urls {
+		us.Set(url.shortURL, url.fullURL)
+	}
+	return storage.NewURLS(us)
+}
+
 func TestShortURLMethods(t *testing.T) {
 	tests := []struct {
-		storage      storage.URLStore
+		storage      *storage.URLS
 		method       string
 		expectedCode int
 		expectedBody string
 	}{
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodGet,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodDelete,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodPut,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodPost,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
@@ -49,7 +69,7 @@ func TestShortURLMethods(t *testing.T) {
 			r := httptest.NewRequest(test.method, "http://localhost:8080/", nil)
 			w := httptest.NewRecorder()
 
-			ShortURL(&test.storage).ServeHTTP(w, r)
+			ShortURL(test.storage).ServeHTTP(w, r)
 
 			assert.Equal(t, test.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 		})
@@ -59,7 +79,7 @@ func TestShortURLMethods(t *testing.T) {
 func TestShortURL(t *testing.T) {
 	tests := []struct {
 		name                string
-		storage             storage.URLStore
+		storage             *storage.URLS
 		body                string
 		expectedCode        int
 		expectedContentType string
@@ -67,7 +87,7 @@ func TestShortURL(t *testing.T) {
 	}{
 		{
 			name:                "empty url",
-			storage:             storage.URLStore{Urls: map[string]string{}},
+			storage:             NewMockMapURLS(),
 			body:                "",
 			expectedCode:        http.StatusBadRequest,
 			expectedContentType: "text/plain; charset=utf-8",
@@ -75,7 +95,7 @@ func TestShortURL(t *testing.T) {
 		},
 		{
 			name:                "invalid url",
-			storage:             storage.URLStore{Urls: map[string]string{}},
+			storage:             NewMockMapURLS(),
 			body:                "yandex",
 			expectedCode:        http.StatusBadRequest,
 			expectedContentType: "text/plain; charset=utf-8",
@@ -83,7 +103,7 @@ func TestShortURL(t *testing.T) {
 		},
 		{
 			name:                "valid url",
-			storage:             storage.URLStore{Urls: map[string]string{}},
+			storage:             NewMockMapURLS(),
 			body:                "https://yandex.com",
 			expectedCode:        http.StatusCreated,
 			expectedContentType: "text/plain",
@@ -95,7 +115,7 @@ func TestShortURL(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "http://localhost:8080/", strings.NewReader(test.body))
 			w := httptest.NewRecorder()
 
-			ShortURL(&test.storage).ServeHTTP(w, r)
+			ShortURL(test.storage).ServeHTTP(w, r)
 
 			res := w.Result()
 
@@ -113,37 +133,37 @@ func TestShortURL(t *testing.T) {
 
 func TestGetShortURLMethods(t *testing.T) {
 	tests := []struct {
-		storage      storage.URLStore
+		storage      *storage.URLS
 		method       string
 		expectedCode int
 		expectedBody string
 	}{
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodGet,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "Please provide a URL.\n",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodPut,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodDelete,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodPut,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
 		},
 		{
-			storage:      storage.URLStore{Urls: map[string]string{}},
+			storage:      NewMockMapURLS(),
 			method:       http.MethodPost,
 			expectedCode: http.StatusBadRequest,
 			expectedBody: "",
@@ -154,7 +174,7 @@ func TestGetShortURLMethods(t *testing.T) {
 			r := httptest.NewRequest(test.method, "http://localhost:8080/", nil)
 			w := httptest.NewRecorder()
 
-			GetShortURL(&test.storage).ServeHTTP(w, r)
+			GetShortURL(test.storage).ServeHTTP(w, r)
 
 			assert.Equal(t, test.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 		})
@@ -168,7 +188,7 @@ func TestGetShortURL(t *testing.T) {
 	}
 	tests := []struct {
 		name           string
-		storage        storage.URLStore
+		storage        *storage.URLS
 		expectedCode   int
 		expectedHeader header
 		expectedBody   string
@@ -176,7 +196,7 @@ func TestGetShortURL(t *testing.T) {
 	}{
 		{
 			name:           "non-existent short url",
-			storage:        storage.URLStore{Urls: map[string]string{}},
+			storage:        NewMockMapURLS(),
 			expectedCode:   http.StatusBadRequest,
 			expectedHeader: header{contentType: "text/plain; charset=utf-8"},
 			expectedBody:   "Invalid URL.\n",
@@ -184,7 +204,7 @@ func TestGetShortURL(t *testing.T) {
 		},
 		{
 			name:           "existent short url",
-			storage:        storage.URLStore{Urls: map[string]string{utils.HashURL("https://yandex.com"): "https://yandex.com"}},
+			storage:        NewMockMapURLS(mockURLS{utils.HashURL("https://yandex.com"), "https://yandex.com"}),
 			expectedCode:   http.StatusTemporaryRedirect,
 			expectedHeader: header{contentType: "text/plain", location: "https://yandex.com"},
 			shortURL:       utils.HashURL("https://yandex.com"),
@@ -196,7 +216,7 @@ func TestGetShortURL(t *testing.T) {
 			r.SetPathValue("id", test.shortURL)
 			w := httptest.NewRecorder()
 
-			GetShortURL(&test.storage).ServeHTTP(w, r)
+			GetShortURL(test.storage).ServeHTTP(w, r)
 
 			res := w.Result()
 			defer res.Body.Close()
