@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
+	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/go-chi/chi/v5"
@@ -11,8 +12,8 @@ import (
 
 func URLRouter(us *storage.URLS) chi.Router {
 	r := chi.NewRouter()
-	r.HandleFunc("/", ShortURL(us))
-	r.HandleFunc("/{id}", GetShortURL(us))
+	r.Handle("/", logger.Logging(ShortURL(us)))
+	r.Handle("/{id}", logger.Logging(GetShortURL(us)))
 	return r
 }
 
