@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-var IdCounter int
+var IDCounter int
 
 func CreateFileStorage() error {
 	_, err := os.OpenFile(config.Options.FileStoragePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -17,13 +17,13 @@ func CreateFileStorage() error {
 }
 
 type Record struct {
-	Id          int    `json:"uuid"`
+	ID          int    `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
 func MakeRecord(shortURL, originalURL string) error {
-	r := Record{Id: IdCounter + 1, ShortURL: shortURL, OriginalURL: originalURL}
+	r := Record{ID: IDCounter + 1, ShortURL: shortURL, OriginalURL: originalURL}
 
 	rm, err := json.Marshal(r)
 	if err != nil {
@@ -46,7 +46,7 @@ func MakeRecord(shortURL, originalURL string) error {
 		return err
 	}
 
-	IdCounter++
+	IDCounter++
 	return nil
 }
 
@@ -67,11 +67,11 @@ func Restore(us *storage.URLS) error {
 		line := scn.Text()
 		record := Record{}
 		err := json.Unmarshal([]byte(line), &record)
-		record.Id = IdCounter + 1
+		record.ID = IDCounter + 1
 		if err != nil {
 			return err
 		}
-		IdCounter++
+		IDCounter++
 		us.Set(record.ShortURL, record.OriginalURL)
 	}
 	return nil
