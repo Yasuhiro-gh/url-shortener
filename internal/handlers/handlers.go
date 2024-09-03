@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
 	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
+	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/compress"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/go-chi/chi/v5"
@@ -15,10 +16,32 @@ import (
 
 func URLRouter(us *storage.URLS) chi.Router {
 	r := chi.NewRouter()
-	r.Handle("/", logger.Logging(ShortURL(us)))
-	r.Handle("/{id}", logger.Logging(GetShortURL(us)))
-	r.Handle("/api/shorten", logger.Logging(ShortURLJSON(us)))
+	r.Handle("/", gzipMiddleware(logger.Logging(ShortURL(us))))
+	r.Handle("/{id}", gzipMiddleware(logger.Logging(GetShortURL(us))))
+	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(ShortURLJSON(us))))
 	return r
+}
+
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ow := w
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			cw := compress.NewGzipWriter(w)
+			ow = cw
+			defer cw.Close()
+		}
+
+		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
+			cr, err := compress.NewGzipReader(r.Body)
+			if err != nil {
+				ow.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			r.Body = cr
+			defer cr.Close()
+		}
+		next.ServeHTTP(ow, r)
+	})
 }
 
 func ShortURL(us *storage.URLS) http.HandlerFunc {
