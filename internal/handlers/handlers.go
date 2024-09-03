@@ -7,6 +7,7 @@ import (
 	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/compress"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
+	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage/filestore"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/go-chi/chi/v5"
 	"io"
@@ -71,6 +72,11 @@ func ShortURL(us *storage.URLS) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
+
+		err := filestore.MakeRecord(urlHash, urlString)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 
 		_, _ = w.Write([]byte(config.Options.BaseURL + "/" + urlHash))
 	}
@@ -156,6 +162,11 @@ func ShortURLJSON(us *storage.URLS) http.HandlerFunc {
 		shortenResponse.Result = config.Options.BaseURL + "/" + urlHash
 
 		resp, err := json.Marshal(shortenResponse)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		err = filestore.MakeRecord(urlHash, shortenRequest.URL)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}

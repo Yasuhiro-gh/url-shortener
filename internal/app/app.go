@@ -5,6 +5,7 @@ import (
 	"github.com/Yasuhiro-gh/url-shortener/internal/handlers"
 	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
+	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage/filestore"
 	"net/http"
 )
 
@@ -14,7 +15,13 @@ func Run() {
 
 	us := storage.NewURLStorage()
 	urls := storage.NewURLS(us)
-	err := http.ListenAndServe(config.Options.Addr, handlers.URLRouter(urls))
+
+	err := filestore.Restore(urls)
+	if err != nil {
+		panic(err)
+	}
+
+	err = http.ListenAndServe(config.Options.Addr, handlers.URLRouter(urls))
 	if err != nil {
 		panic(err)
 	}
