@@ -41,7 +41,7 @@ func MakeRecord(shortURL, originalURL string) error {
 		return err
 	}
 
-	_, err = file.Write([]byte("\n"))
+	_, err = file.WriteString("\n")
 	if err != nil {
 		return err
 	}

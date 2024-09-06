@@ -15,16 +15,27 @@ import (
 	"strings"
 )
 
+type URLHandler struct {
+	*storage.URLS
+}
+
+func NewURLHandler(us *storage.URLS) *URLHandler {
+	return &URLHandler{us}
+}
+
 func URLRouter(us *storage.URLS) chi.Router {
 	r := chi.NewRouter()
-	r.Handle("/", gzipMiddleware(logger.Logging(ShortURL(us))))
-	r.Handle("/{id}", gzipMiddleware(logger.Logging(GetShortURL(us))))
-	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(ShortURLJSON(us))))
+
+	uh := NewURLHandler(us)
+
+	r.Handle("/", gzipMiddleware(logger.Logging(uh.ShortURL())))
+	r.Handle("/{id}", gzipMiddleware(logger.Logging(uh.GetShortURL())))
+	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(uh.ShortURLJSON())))
 	return r
 }
 
-func gzipMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func gzipMiddleware(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		ow := w
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			cw := compress.NewGzipWriter(w)
@@ -42,10 +53,10 @@ func gzipMiddleware(next http.Handler) http.Handler {
 			defer cr.Close()
 		}
 		next.ServeHTTP(ow, r)
-	})
+	}
 }
 
-func ShortURL(us *storage.URLS) http.HandlerFunc {
+func (h *URLHandler) ShortURL() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
@@ -66,8 +77,8 @@ func ShortURL(us *storage.URLS) http.HandlerFunc {
 		}
 
 		urlHash := utils.HashURL(urlString)
-		if _, exist := us.Get(urlHash); !exist {
-			us.Set(urlHash, urlString)
+		if _, exist := h.URLS.Get(urlHash); !exist {
+			h.URLS.Set(urlHash, urlString)
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
@@ -82,7 +93,7 @@ func ShortURL(us *storage.URLS) http.HandlerFunc {
 	}
 }
 
-func GetShortURL(us *storage.URLS) http.HandlerFunc {
+func (h *URLHandler) GetShortURL() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
@@ -96,7 +107,7 @@ func GetShortURL(us *storage.URLS) http.HandlerFunc {
 			return
 		}
 
-		url, exist := us.Get(shortURL)
+		url, exist := h.URLS.Get(shortURL)
 		if !exist {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
@@ -108,7 +119,7 @@ func GetShortURL(us *storage.URLS) http.HandlerFunc {
 	}
 }
 
-func ShortURLJSON(us *storage.URLS) http.HandlerFunc {
+func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
@@ -156,8 +167,8 @@ func ShortURLJSON(us *storage.URLS) http.HandlerFunc {
 		}
 
 		urlHash := utils.HashURL(shortenRequest.URL)
-		if _, exist := us.Get(urlHash); !exist {
-			us.Set(urlHash, shortenRequest.URL)
+		if _, exist := h.URLS.Get(urlHash); !exist {
+			h.URLS.Set(urlHash, shortenRequest.URL)
 		}
 		shortenResponse.Result = config.Options.BaseURL + "/" + urlHash
 
