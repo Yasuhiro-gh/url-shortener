@@ -69,7 +69,7 @@ func TestShortURLMethods(t *testing.T) {
 			r := httptest.NewRequest(test.method, "http://localhost:8080/", nil)
 			w := httptest.NewRecorder()
 
-			ShortURL(test.storage).ServeHTTP(w, r)
+			NewURLHandler(test.storage).ShortURL().ServeHTTP(w, r)
 
 			assert.Equal(t, test.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 		})
@@ -115,7 +115,63 @@ func TestShortURL(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "http://localhost:8080/", strings.NewReader(test.body))
 			w := httptest.NewRecorder()
 
-			ShortURL(test.storage).ServeHTTP(w, r)
+			NewURLHandler(test.storage).ShortURL().ServeHTTP(w, r)
+
+			res := w.Result()
+
+			assert.Equal(t, test.expectedCode, res.StatusCode, "Wrong response code status")
+
+			defer res.Body.Close()
+			resBody, err := io.ReadAll(res.Body)
+
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedContentType, res.Header.Get("Content-Type"), "Wrong content type")
+			assert.Equal(t, test.expectedBody, string(resBody), "Wrong response body")
+		})
+	}
+}
+
+func TestShortURLJSON(t *testing.T) {
+	tests := []struct {
+		name                string
+		storage             *storage.URLS
+		body                string
+		expectedCode        int
+		expectedContentType string
+		expectedBody        string
+	}{
+		{
+			name:                "empty url",
+			storage:             NewMockMapURLS(),
+			body:                "{}",
+			expectedCode:        http.StatusBadRequest,
+			expectedContentType: "text/plain; charset=utf-8",
+			expectedBody:        "Please provide a URL.\n",
+		},
+		{
+			name:                "invalid url",
+			storage:             NewMockMapURLS(),
+			body:                `{"url": "yandex"}`,
+			expectedCode:        http.StatusBadRequest,
+			expectedContentType: "text/plain; charset=utf-8",
+			expectedBody:        "Invalid URL.\n",
+		},
+		{
+			name:                "valid url",
+			storage:             NewMockMapURLS(),
+			body:                `{"url": "https://yandex.com"}`,
+			expectedCode:        http.StatusCreated,
+			expectedContentType: "application/json",
+			expectedBody:        `{"result":` + "\"" + "http://localhost:8080/" + utils.HashURL("https://yandex.com") + "\"" + "}",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader(test.body))
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			NewURLHandler(test.storage).ShortURLJSON().ServeHTTP(w, r)
 
 			res := w.Result()
 
@@ -174,7 +230,7 @@ func TestGetShortURLMethods(t *testing.T) {
 			r := httptest.NewRequest(test.method, "http://localhost:8080/", nil)
 			w := httptest.NewRecorder()
 
-			GetShortURL(test.storage).ServeHTTP(w, r)
+			NewURLHandler(test.storage).GetShortURL().ServeHTTP(w, r)
 
 			assert.Equal(t, test.expectedCode, w.Code, "Код ответа не совпадает с ожидаемым")
 		})
@@ -216,7 +272,7 @@ func TestGetShortURL(t *testing.T) {
 			r.SetPathValue("id", test.shortURL)
 			w := httptest.NewRecorder()
 
-			GetShortURL(test.storage).ServeHTTP(w, r)
+			NewURLHandler(test.storage).GetShortURL().ServeHTTP(w, r)
 
 			res := w.Result()
 			defer res.Body.Close()
