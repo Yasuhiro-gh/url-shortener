@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
+	"github.com/Yasuhiro-gh/url-shortener/internal/db"
 	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/compress"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
@@ -13,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type URLHandler struct {
@@ -23,7 +26,7 @@ func NewURLHandler(us *storage.URLS) *URLHandler {
 	return &URLHandler{us}
 }
 
-func URLRouter(us *storage.URLS) chi.Router {
+func URLRouter(ctx context.Context, us *storage.URLS, pdb *db.PostgresDB) chi.Router {
 	r := chi.NewRouter()
 
 	uh := NewURLHandler(us)
@@ -31,6 +34,7 @@ func URLRouter(us *storage.URLS) chi.Router {
 	r.Handle("/", gzipMiddleware(logger.Logging(uh.ShortURL())))
 	r.Handle("/{id}", gzipMiddleware(logger.Logging(uh.GetShortURL())))
 	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(uh.ShortURLJSON())))
+	r.Handle("/ping", logger.Logging(CheckDBConnection(ctx, pdb)))
 	return r
 }
 
@@ -185,5 +189,23 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write(resp)
+	}
+}
+
+func CheckDBConnection(ctx context.Context, pdb *db.PostgresDB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
+		}
+
+		ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Second)
+		defer cancel()
+		if err := pdb.DB.PingContext(ctxTimeout); err != nil {
+			http.Error(w, "Cannot connect to database", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Database connected"))
 	}
 }

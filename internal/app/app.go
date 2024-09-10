@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
+	"github.com/Yasuhiro-gh/url-shortener/internal/db"
 	"github.com/Yasuhiro-gh/url-shortener/internal/handlers"
 	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
@@ -16,12 +18,19 @@ func Run() {
 	us := storage.NewURLStorage()
 	urls := storage.NewURLS(us)
 
-	err := filestore.Restore(urls)
+	pdb := db.NewPostgresDB()
+	err := pdb.OpenConnection()
+	if err != nil {
+		panic(err)
+	}
+	defer pdb.CloseConnection()
+
+	err = filestore.Restore(urls)
 	if err != nil {
 		panic(err)
 	}
 
-	err = http.ListenAndServe(config.Options.Addr, handlers.URLRouter(urls))
+	err = http.ListenAndServe(config.Options.Addr, handlers.URLRouter(context.Background(), urls, pdb))
 	if err != nil {
 		panic(err)
 	}
