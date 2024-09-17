@@ -85,13 +85,13 @@ func (h *URLHandler) ShortURL() http.HandlerFunc {
 		var httpStatus = http.StatusCreated
 
 		urlHash := utils.HashURL(urlString)
-		err := h.URLS.Set(urlHash, urlString)
-		if err != nil && err.Error() == pgerrcode.UniqueViolation {
+		repeatErr := h.URLS.Set(urlHash, urlString)
+		if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 			httpStatus = http.StatusConflict
 		} else {
-			err = filestore.MakeRecord(urlHash, urlString)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+			repeatErr = filestore.MakeRecord(urlHash, urlString)
+			if repeatErr != nil {
+				http.Error(w, repeatErr.Error(), http.StatusBadRequest)
 			}
 		}
 		w.Header().Set("Content-Type", "text/plain")
@@ -184,7 +184,7 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
-		if err != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
+		if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 			httpStatus = http.StatusConflict
 		} else {
 			err = filestore.MakeRecord(urlHash, shortenRequest.URL)
@@ -252,7 +252,7 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 			urlHash := utils.HashURL(val.OriginalURL)
 			repeatErr := h.URLS.Set(urlHash, val.OriginalURL)
 
-			if err != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
+			if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 				httpStatus = http.StatusConflict
 			} else {
 				err = filestore.MakeRecord(urlHash, val.OriginalURL)
