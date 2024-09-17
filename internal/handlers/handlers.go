@@ -12,6 +12,7 @@ import (
 	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage/filestore"
 	"github.com/Yasuhiro-gh/url-shortener/internal/utils"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgerrcode"
 	"io"
 	"net/http"
 	"strings"
@@ -81,19 +82,20 @@ func (h *URLHandler) ShortURL() http.HandlerFunc {
 			return
 		}
 
+		var httpStatus = http.StatusCreated
+
 		urlHash := utils.HashURL(urlString)
-		if _, exist := h.URLS.Get(urlHash); !exist {
-			h.URLS.Set(urlHash, urlString)
+		err := h.URLS.Set(urlHash, urlString)
+		if err != nil && err.Error() == pgerrcode.UniqueViolation {
+			httpStatus = http.StatusConflict
+		} else {
+			err = filestore.MakeRecord(urlHash, urlString)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			}
 		}
-
 		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusCreated)
-
-		err := filestore.MakeRecord(urlHash, urlString)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		}
-
+		w.WriteHeader(httpStatus)
 		_, _ = w.Write([]byte(config.Options.BaseURL + "/" + urlHash))
 	}
 }
@@ -172,9 +174,9 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 		}
 
 		urlHash := utils.HashURL(shortenRequest.URL)
-		if _, exist := h.URLS.Get(urlHash); !exist {
-			h.URLS.Set(urlHash, shortenRequest.URL)
-		}
+		repeatErr := h.URLS.Set(urlHash, shortenRequest.URL)
+		var httpStatus = http.StatusCreated
+
 		shortenResponse.Result = config.Options.BaseURL + "/" + urlHash
 
 		resp, err := json.Marshal(shortenResponse)
@@ -182,13 +184,17 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
-		err = filestore.MakeRecord(urlHash, shortenRequest.URL)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if err != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
+			httpStatus = http.StatusConflict
+		} else {
+			err = filestore.MakeRecord(urlHash, shortenRequest.URL)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(httpStatus)
 		_, _ = w.Write(resp)
 	}
 }
@@ -230,6 +236,8 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 
 		var shortenResponse []ShortenResponse
 
+		var httpStatus = http.StatusCreated
+
 		for _, val := range shortenRequest {
 			if val.OriginalURL == "" {
 				http.Error(w, "Please provide a URL.", http.StatusBadRequest)
@@ -242,13 +250,15 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 			}
 
 			urlHash := utils.HashURL(val.OriginalURL)
-			if _, exist := h.URLS.Get(urlHash); !exist {
-				h.URLS.Set(urlHash, val.OriginalURL)
-			}
+			repeatErr := h.URLS.Set(urlHash, val.OriginalURL)
 
-			err = filestore.MakeRecord(urlHash, val.OriginalURL)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+			if err != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
+				httpStatus = http.StatusConflict
+			} else {
+				err = filestore.MakeRecord(urlHash, val.OriginalURL)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+				}
 			}
 
 			response := ShortenResponse{val.CorrelationID, config.Options.BaseURL + "/" + urlHash}
@@ -263,7 +273,7 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(httpStatus)
 		_, _ = w.Write(marshaledResponse)
 	}
 }

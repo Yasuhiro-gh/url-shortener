@@ -2,8 +2,11 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
+	"github.com/jackc/pgerrcode"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"strings"
 )
 
 type PostgresDB struct {
@@ -27,8 +30,12 @@ func (pdb *PostgresDB) Get(shortURL string) (string, bool) {
 	return originalURL, true
 }
 
-func (pdb *PostgresDB) Set(shortURL string, originalURL string) {
-	pdb.DB.Exec("INSERT INTO urls (short_url, original_url) VALUES ($1, $2)", shortURL, originalURL)
+func (pdb *PostgresDB) Set(shortURL string, originalURL string) error {
+	_, err := pdb.DB.Exec("INSERT INTO urls (short_url, original_url) VALUES ($1, $2)", shortURL, originalURL)
+	if err != nil && strings.Contains(err.Error(), pgerrcode.UniqueViolation) {
+		return errors.New(pgerrcode.UniqueViolation)
+	}
+	return err
 }
 
 func isTableExist(pdb *PostgresDB, table string) bool {
@@ -41,7 +48,7 @@ func CreateDatabaseTable(pdb *PostgresDB) error {
 	if isTableExist(pdb, "urls") {
 		return nil
 	}
-	_, err := pdb.DB.Exec(`CREATE TABLE urls("original_url" TEXT, "short_url" TEXT)`)
+	_, err := pdb.DB.Exec(`CREATE TABLE urls("original_url" TEXT UNIQUE, "short_url" TEXT)`)
 	if err != nil {
 		return err
 	}
