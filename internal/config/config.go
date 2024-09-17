@@ -16,7 +16,7 @@ func Run() {
 	flag.StringVar(&Options.Addr, "a", "localhost:8080", "http server address")
 	flag.StringVar(&Options.BaseURL, "b", "http://localhost:8080", "base url")
 	flag.StringVar(&Options.FileStoragePath, "f", "temp", "file storage path")
-	flag.StringVar(&Options.DatabaseDSN, "d", "localhost:5432", "database dsn")
+	flag.StringVar(&Options.DatabaseDSN, "d", "", "database dsn")
 
 	flag.Parse()
 

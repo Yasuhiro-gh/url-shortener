@@ -23,6 +23,10 @@ type Record struct {
 }
 
 func MakeRecord(shortURL, originalURL string) error {
+	if config.Options.DatabaseDSN != "" {
+		return nil
+	}
+
 	r := Record{ID: IDCounter + 1, ShortURL: shortURL, OriginalURL: originalURL}
 
 	rm, err := json.Marshal(r)
@@ -51,6 +55,10 @@ func MakeRecord(shortURL, originalURL string) error {
 }
 
 func Restore(us *storage.URLS) error {
+	if config.Options.DatabaseDSN != "" {
+		return nil
+	}
+
 	err := CreateFileStorage()
 	if err != nil {
 		return err

@@ -29,6 +29,6 @@ func (us *URLS) Get(url string) (string, bool) {
 	val, exist := us.storage.Get(url)
 	return val, exist
 }
-func (us *URLS) Set(shortURL, url string) {
-	us.storage.Set(shortURL, url)
+func (us *URLS) Set(shortURL, originalURL string) {
+	us.storage.Set(shortURL, originalURL)
 }

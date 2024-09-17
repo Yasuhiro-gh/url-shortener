@@ -15,22 +15,34 @@ func Run() {
 	config.Run()
 	logger.Run()
 
-	us := storage.NewURLStorage()
-	urls := storage.NewURLS(us)
-
 	pdb := db.NewPostgresDB()
-	err := pdb.OpenConnection()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var urls *storage.URLS
+	if config.Options.DatabaseDSN != "" {
+		err := pdb.OpenConnection()
+		if err != nil {
+			panic(err)
+		}
+		err = db.CreateDatabaseTable(pdb)
+		if err != nil {
+			panic(err)
+		}
+		defer pdb.CloseConnection()
+		urls = storage.NewURLS(pdb)
+	} else {
+		us := storage.NewURLStorage()
+		urls = storage.NewURLS(us)
+	}
+
+	err := filestore.Restore(urls)
 	if err != nil {
 		panic(err)
 	}
-	defer pdb.CloseConnection()
 
-	err = filestore.Restore(urls)
-	if err != nil {
-		panic(err)
-	}
-
-	err = http.ListenAndServe(config.Options.Addr, handlers.URLRouter(context.Background(), urls, pdb))
+	err = http.ListenAndServe(config.Options.Addr, handlers.URLRouter(ctx, urls, pdb))
 	if err != nil {
 		panic(err)
 	}
