@@ -34,10 +34,7 @@ func (pdb *PostgresDB) Set(shortURL string, originalURL string) {
 func isTableExist(pdb *PostgresDB, table string) bool {
 	var n int
 	err := pdb.DB.QueryRow("SELECT 1 FROM information_schema.tables WHERE table_name = $1", table).Scan(&n)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func CreateDatabaseTable(pdb *PostgresDB) error {
