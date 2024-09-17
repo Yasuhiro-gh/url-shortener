@@ -34,6 +34,7 @@ func URLRouter(ctx context.Context, us *storage.URLS, pdb *db.PostgresDB) chi.Ro
 	r.Handle("/", gzipMiddleware(logger.Logging(uh.ShortURL())))
 	r.Handle("/{id}", gzipMiddleware(logger.Logging(uh.GetShortURL())))
 	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(uh.ShortURLJSON())))
+	r.Handle("/api/shorten/batch", gzipMiddleware(logger.Logging(uh.ShortURLBatch())))
 	r.Handle("/ping", logger.Logging(CheckDBConnection(ctx, pdb)))
 	return r
 }
@@ -189,6 +190,81 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write(resp)
+	}
+}
+
+func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
+		}
+
+		if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+			http.Error(w, "Only JSON content type is supported.", http.StatusBadRequest)
+			return
+		}
+
+		var buf bytes.Buffer
+
+		type ShortenJSON struct {
+			CorrelationID string `json:"correlation_id"`
+			OriginalURL   string `json:"original_url"`
+		}
+
+		var shortenRequest []ShortenJSON
+
+		_, err := buf.ReadFrom(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err = json.Unmarshal(buf.Bytes(), &shortenRequest); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		type ShortenResponse struct {
+			CorrelationID string `json:"correlation_id"`
+			ShortURL      string `json:"short_url"`
+		}
+
+		var shortenResponse []ShortenResponse
+
+		for _, val := range shortenRequest {
+			if val.OriginalURL == "" {
+				http.Error(w, "Please provide a URL.", http.StatusBadRequest)
+				return
+			}
+
+			if !utils.IsValidURL(val.OriginalURL) {
+				http.Error(w, "Invalid URL.", http.StatusBadRequest)
+				return
+			}
+
+			urlHash := utils.HashURL(val.OriginalURL)
+			if _, exist := h.URLS.Get(urlHash); !exist {
+				h.URLS.Set(urlHash, val.OriginalURL)
+			}
+
+			err = filestore.MakeRecord(urlHash, val.OriginalURL)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			}
+
+			response := ShortenResponse{val.CorrelationID, config.Options.BaseURL + "/" + urlHash}
+
+			shortenResponse = append(shortenResponse, response)
+		}
+
+		marshaledResponse, err := json.Marshal(shortenResponse)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write(marshaledResponse)
 	}
 }
 
