@@ -20,7 +20,7 @@ import (
 )
 
 type URLHandler struct {
-	*storage.URLS
+	storage.URLStorages
 }
 
 func NewURLHandler(us *storage.URLS) *URLHandler {
@@ -85,7 +85,7 @@ func (h *URLHandler) ShortURL() http.HandlerFunc {
 		var httpStatus = http.StatusCreated
 
 		urlHash := utils.HashURL(urlString)
-		repeatErr := h.URLS.Set(urlHash, urlString)
+		repeatErr := h.Set(urlHash, urlString)
 		if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 			httpStatus = http.StatusConflict
 		} else {
@@ -114,7 +114,7 @@ func (h *URLHandler) GetShortURL() http.HandlerFunc {
 			return
 		}
 
-		url, exist := h.URLS.Get(shortURL)
+		url, exist := h.Get(shortURL)
 		if !exist {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
@@ -174,7 +174,7 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 		}
 
 		urlHash := utils.HashURL(shortenRequest.URL)
-		repeatErr := h.URLS.Set(urlHash, shortenRequest.URL)
+		repeatErr := h.Set(urlHash, shortenRequest.URL)
 		var httpStatus = http.StatusCreated
 
 		shortenResponse.Result = config.Options.BaseURL + "/" + urlHash
@@ -250,7 +250,7 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 			}
 
 			urlHash := utils.HashURL(val.OriginalURL)
-			repeatErr := h.URLS.Set(urlHash, val.OriginalURL)
+			repeatErr := h.Set(urlHash, val.OriginalURL)
 
 			if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 				httpStatus = http.StatusConflict
