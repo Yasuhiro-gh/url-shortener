@@ -13,8 +13,9 @@ func (us *URLStorage) Get(key string) (string, bool) {
 	return value, ok
 }
 
-func (us *URLStorage) Set(key string, value string) {
+func (us *URLStorage) Set(key string, value string) error {
 	us.urls[key] = value
+	return nil
 }
 
 type URLS struct {
@@ -29,6 +30,6 @@ func (us *URLS) Get(url string) (string, bool) {
 	val, exist := us.storage.Get(url)
 	return val, exist
 }
-func (us *URLS) Set(shortURL, url string) {
-	us.storage.Set(shortURL, url)
+func (us *URLS) Set(shortURL, originalURL string) error {
+	return us.storage.Set(shortURL, originalURL)
 }
