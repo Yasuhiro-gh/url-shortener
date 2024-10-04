@@ -20,14 +20,15 @@ type Record struct {
 	ID          int    `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      int    `json:"user_id"`
 }
 
-func MakeRecord(shortURL, originalURL string) error {
+func MakeRecord(us *storage.Store) error {
 	if config.Options.DatabaseDSN != "" {
 		return nil
 	}
 
-	r := Record{ID: IDCounter + 1, ShortURL: shortURL, OriginalURL: originalURL}
+	r := Record{ID: IDCounter + 1, ShortURL: us.ShortURL, OriginalURL: us.OriginalURL, UserID: us.UserID}
 
 	rm, err := json.Marshal(r)
 	if err != nil {
@@ -80,7 +81,13 @@ func Restore(us *storage.URLS) error {
 			return err
 		}
 		IDCounter++
-		us.Set(record.ShortURL, record.OriginalURL)
+
+		s := &storage.Store{UserID: record.UserID, ShortURL: record.ShortURL, OriginalURL: record.OriginalURL}
+
+		err = us.Set(s.ShortURL, s)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

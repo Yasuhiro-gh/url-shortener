@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/Yasuhiro-gh/url-shortener/internal/auth"
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
 	"github.com/Yasuhiro-gh/url-shortener/internal/db"
 	"github.com/Yasuhiro-gh/url-shortener/internal/logger"
@@ -36,8 +38,21 @@ func URLRouter(ctx context.Context, us *storage.URLS, pdb *db.PostgresDB) chi.Ro
 	r.Handle("/{id}", gzipMiddleware(logger.Logging(uh.GetShortURL())))
 	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(uh.ShortURLJSON())))
 	r.Handle("/api/shorten/batch", gzipMiddleware(logger.Logging(uh.ShortURLBatch())))
+	r.Handle("/api/user/urls", gzipMiddleware(logger.Logging(uh.UserURLS())))
 	r.Handle("/ping", logger.Logging(CheckDBConnection(ctx, pdb)))
 	return r
+}
+
+func GetUserIDFromCookie(r *http.Request) (int, error) {
+	uidCookie, err := r.Cookie("userIDToken")
+	if err != nil {
+		return 0, err
+	}
+	userID, err := auth.GetUserID(uidCookie.Value)
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
 }
 
 func gzipMiddleware(next http.Handler) http.HandlerFunc {
@@ -62,12 +77,34 @@ func gzipMiddleware(next http.Handler) http.HandlerFunc {
 	}
 }
 
+func (h *URLHandler) Auth(w http.ResponseWriter, r *http.Request) error {
+	cookie, cookieErr := r.Cookie("userIDToken")
+
+	if cookieErr == nil {
+		_, err := auth.GetUserID(cookie.Value)
+		if err == nil {
+			return nil
+		}
+	}
+
+	newUserID := h.GetUserID()
+	token, err := auth.BuildJWTString(newUserID + 1)
+	if err != nil {
+		return err
+	}
+	newCookie := http.Cookie{Name: "userIDToken", Value: token, Expires: time.Now().Add(time.Minute * 10), Path: "/"}
+	http.SetCookie(w, &newCookie)
+	return errors.New("unauthorized")
+}
+
 func (h *URLHandler) ShortURL() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is supported.", http.StatusBadRequest)
 			return
 		}
+
+		_ = h.Auth(w, r)
 
 		body, _ := io.ReadAll(r.Body)
 
@@ -84,19 +121,28 @@ func (h *URLHandler) ShortURL() http.HandlerFunc {
 
 		var httpStatus = http.StatusCreated
 
+		var userID int
+		if uid, err := GetUserIDFromCookie(r); err == nil {
+			userID = uid
+		} else {
+			userID = h.GetUserID() + 1
+		}
+
 		urlHash := utils.HashURL(urlString)
-		repeatErr := h.Set(urlHash, urlString)
+		urlStore := &storage.Store{OriginalURL: urlString, ShortURL: config.Options.BaseURL + "/" + urlHash, UserID: userID}
+
+		repeatErr := h.Set(urlHash, urlStore)
 		if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 			httpStatus = http.StatusConflict
 		} else {
-			repeatErr = filestore.MakeRecord(urlHash, urlString)
+			repeatErr = filestore.MakeRecord(urlStore)
 			if repeatErr != nil {
 				http.Error(w, repeatErr.Error(), http.StatusBadRequest)
 			}
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(httpStatus)
-		_, _ = w.Write([]byte(config.Options.BaseURL + "/" + urlHash))
+		_, _ = w.Write([]byte(urlStore.ShortURL))
 	}
 }
 
@@ -107,6 +153,8 @@ func (h *URLHandler) GetShortURL() http.HandlerFunc {
 			return
 		}
 
+		_ = h.Auth(w, r)
+
 		shortURL := r.PathValue("id")
 
 		if shortURL == "" {
@@ -114,15 +162,48 @@ func (h *URLHandler) GetShortURL() http.HandlerFunc {
 			return
 		}
 
-		url, exist := h.Get(shortURL)
+		urlStore, exist := h.Get(shortURL)
 		if !exist {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("Location", url)
+		w.Header().Set("Location", urlStore.OriginalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
+}
+
+func (h *URLHandler) UserURLS() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
+		}
+
+		err := h.Auth(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		uid, _ := GetUserIDFromCookie(r)
+
+		urlStores, err := h.GetUserURLS(r.Context(), uid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(urlStores) == 0 {
+			http.Error(w, "There is no your urls", http.StatusNoContent)
+			return
+		}
+
+		resp, err := json.Marshal(urlStores)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(resp)
 	}
 }
 
@@ -137,6 +218,8 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 			http.Error(w, "Only JSON content type is supported.", http.StatusBadRequest)
 			return
 		}
+
+		_ = h.Auth(w, r)
 
 		var buf bytes.Buffer
 
@@ -173,8 +256,16 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 			return
 		}
 
+		var userID int
+		if uid, err := GetUserIDFromCookie(r); err == nil {
+			userID = uid
+		} else {
+			userID = h.GetUserID() + 1
+		}
+
 		urlHash := utils.HashURL(shortenRequest.URL)
-		repeatErr := h.Set(urlHash, shortenRequest.URL)
+		urlStore := &storage.Store{OriginalURL: shortenRequest.URL, ShortURL: config.Options.BaseURL + "/" + urlHash, UserID: userID}
+		repeatErr := h.Set(urlHash, urlStore)
 		var httpStatus = http.StatusCreated
 
 		shortenResponse.Result = config.Options.BaseURL + "/" + urlHash
@@ -187,7 +278,7 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 		if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 			httpStatus = http.StatusConflict
 		} else {
-			err = filestore.MakeRecord(urlHash, shortenRequest.URL)
+			err = filestore.MakeRecord(urlStore)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			}
@@ -209,6 +300,8 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 			http.Error(w, "Only JSON content type is supported.", http.StatusBadRequest)
 			return
 		}
+
+		_ = h.Auth(w, r)
 
 		var buf bytes.Buffer
 
@@ -249,19 +342,27 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 				return
 			}
 
+			var userID int
+			if uid, err := GetUserIDFromCookie(r); err == nil {
+				userID = uid
+			} else {
+				userID = h.GetUserID() + 1
+			}
+
 			urlHash := utils.HashURL(val.OriginalURL)
-			repeatErr := h.Set(urlHash, val.OriginalURL)
+			urlStore := &storage.Store{OriginalURL: val.OriginalURL, ShortURL: config.Options.BaseURL + "/" + urlHash, UserID: userID}
+			repeatErr := h.Set(urlHash, urlStore)
 
 			if repeatErr != nil && repeatErr.Error() == pgerrcode.UniqueViolation {
 				httpStatus = http.StatusConflict
 			} else {
-				err = filestore.MakeRecord(urlHash, val.OriginalURL)
+				err = filestore.MakeRecord(urlStore)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 				}
 			}
 
-			response := ShortenResponse{val.CorrelationID, config.Options.BaseURL + "/" + urlHash}
+			response := ShortenResponse{val.CorrelationID, urlStore.ShortURL}
 
 			shortenResponse = append(shortenResponse, response)
 		}

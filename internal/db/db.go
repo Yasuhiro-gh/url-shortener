@@ -1,9 +1,11 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"github.com/Yasuhiro-gh/url-shortener/internal/config"
+	"github.com/Yasuhiro-gh/url-shortener/internal/usecase/storage"
 	"github.com/jackc/pgerrcode"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"strings"
@@ -17,25 +19,57 @@ func NewPostgresDB() *PostgresDB {
 	return &PostgresDB{}
 }
 
-func (pdb *PostgresDB) Get(shortURL string) (string, bool) {
-	qr := pdb.DB.QueryRow("SELECT original_url FROM urls WHERE short_url = $1", shortURL)
+func (pdb *PostgresDB) Get(shortURL string) (storage.Store, bool) {
+	qr := pdb.DB.QueryRow("SELECT original_url, user_id FROM urls WHERE short_url = $1", shortURL)
 	if qr.Err() != nil {
-		return "", false
+		return storage.Store{}, false
 	}
-	var originalURL string
-	err := qr.Scan(&originalURL)
+	var store storage.Store
+	err := qr.Scan(&store)
 	if err != nil {
-		return "", false
+		return storage.Store{}, false
 	}
-	return originalURL, true
+	return store, true
 }
 
-func (pdb *PostgresDB) Set(shortURL string, originalURL string) error {
-	_, err := pdb.DB.Exec("INSERT INTO urls (short_url, original_url) VALUES ($1, $2)", shortURL, originalURL)
+func (pdb *PostgresDB) Set(shortURL string, store *storage.Store) error {
+	_, err := pdb.DB.Exec("INSERT INTO urls (short_url, original_url, user_id) VALUES ($1, $2, $3)",
+		shortURL, store.OriginalURL, store.UserID)
 	if err != nil && strings.Contains(err.Error(), pgerrcode.UniqueViolation) {
 		return errors.New(pgerrcode.UniqueViolation)
 	}
 	return err
+}
+
+func (pdb *PostgresDB) GetUserURLS(ctx context.Context, userID int) ([]storage.Store, error) {
+	qc, err := pdb.DB.QueryContext(ctx, "SELECT original_url, short_url FROM urls WHERE user_id = $1", userID)
+	if err != nil {
+		return nil, err
+	}
+	defer qc.Close()
+	var urls []storage.Store
+	for qc.Next() {
+		var store storage.Store
+		err := qc.Scan(&store.OriginalURL, &store.ShortURL)
+		if err != nil {
+			return nil, err
+		}
+		urls = append(urls, store)
+	}
+	return urls, nil
+}
+
+func (pdb *PostgresDB) GetUserID() int {
+	qr := pdb.DB.QueryRow("SELECT user_id FROM urls GROUP BY user_id ORDER BY user_id DESC LIMIT 1")
+	if qr.Err() != nil {
+		return 0
+	}
+	var userID int
+	err := qr.Scan(&userID)
+	if err != nil {
+		return 0
+	}
+	return userID
 }
 
 func isTableExist(pdb *PostgresDB, table string) bool {
@@ -48,7 +82,7 @@ func CreateDatabaseTable(pdb *PostgresDB) error {
 	if isTableExist(pdb, "urls") {
 		return nil
 	}
-	_, err := pdb.DB.Exec(`CREATE TABLE urls("original_url" TEXT UNIQUE, "short_url" TEXT)`)
+	_, err := pdb.DB.Exec(`CREATE TABLE urls("original_url" TEXT UNIQUE, "short_url" TEXT, "user_id" INTEGER)`)
 	if err != nil {
 		return err
 	}

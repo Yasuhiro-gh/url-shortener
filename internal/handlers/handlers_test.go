@@ -27,7 +27,8 @@ func TestMain(m *testing.M) {
 func NewMockMapURLS(urls ...mockURLS) *storage.URLS {
 	us := storage.NewURLStorage()
 	for _, url := range urls {
-		us.Set(url.shortURL, url.fullURL)
+		newus := &storage.Store{OriginalURL: url.fullURL, ShortURL: config.Options.BaseURL + "/" + url.shortURL}
+		us.Set(url.shortURL, newus)
 	}
 	return storage.NewURLS(us)
 }
