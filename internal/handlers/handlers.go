@@ -77,24 +77,25 @@ func gzipMiddleware(next http.Handler) http.HandlerFunc {
 	}
 }
 
-func (h *URLHandler) Auth(w http.ResponseWriter, r *http.Request) error {
+func (h *URLHandler) Auth(w http.ResponseWriter, r *http.Request) (int, error) {
 	cookie, cookieErr := r.Cookie("userIDToken")
 
 	if cookieErr == nil {
-		_, err := auth.GetUserID(cookie.Value)
+		uid, err := auth.GetUserID(cookie.Value)
 		if err == nil {
-			return nil
+			return uid, nil
 		}
 	}
 
 	newUserID := h.GetUserID()
-	token, err := auth.BuildJWTString(newUserID + 1)
+	newUserID++
+	token, err := auth.BuildJWTString(newUserID)
 	if err != nil {
-		return err
+		return newUserID, err
 	}
 	newCookie := http.Cookie{Name: "userIDToken", Value: token, Expires: time.Now().Add(time.Minute * 10), Path: "/"}
 	http.SetCookie(w, &newCookie)
-	return errors.New("unauthorized")
+	return newUserID, errors.New("unauthorized")
 }
 
 func (h *URLHandler) ShortURL() http.HandlerFunc {
@@ -104,7 +105,11 @@ func (h *URLHandler) ShortURL() http.HandlerFunc {
 			return
 		}
 
-		_ = h.Auth(w, r)
+		userID, _ := h.Auth(w, r)
+
+		if uid, err := GetUserIDFromCookie(r); err == nil {
+			userID = uid
+		}
 
 		body, _ := io.ReadAll(r.Body)
 
@@ -120,13 +125,6 @@ func (h *URLHandler) ShortURL() http.HandlerFunc {
 		}
 
 		var httpStatus = http.StatusCreated
-
-		var userID int
-		if uid, err := GetUserIDFromCookie(r); err == nil {
-			userID = uid
-		} else {
-			userID = h.GetUserID() + 1
-		}
 
 		urlHash := utils.HashURL(urlString)
 		urlStore := &storage.Store{OriginalURL: urlString, ShortURL: config.Options.BaseURL + "/" + urlHash, UserID: userID}
@@ -153,7 +151,7 @@ func (h *URLHandler) GetShortURL() http.HandlerFunc {
 			return
 		}
 
-		_ = h.Auth(w, r)
+		_, _ = h.Auth(w, r)
 
 		shortURL := r.PathValue("id")
 
@@ -180,15 +178,13 @@ func (h *URLHandler) UserURLS() http.HandlerFunc {
 			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
 		}
 
-		err := h.Auth(w, r)
+		userID, err := h.Auth(w, r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 
-		uid, _ := GetUserIDFromCookie(r)
-
-		urlStores, err := h.GetUserURLS(r.Context(), uid)
+		urlStores, err := h.GetUserURLS(r.Context(), userID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -198,11 +194,22 @@ func (h *URLHandler) UserURLS() http.HandlerFunc {
 			return
 		}
 
-		resp, err := json.Marshal(urlStores)
+		type userURL struct {
+			ShortURL    string `json:"short_url"`
+			OriginalURL string `json:"original_url"`
+		}
+		var userURLS []userURL
+		for _, u := range urlStores {
+			url := userURL{config.Options.BaseURL + "/" + u.ShortURL, u.OriginalURL}
+			userURLS = append(userURLS, url)
+		}
+
+		resp, err := json.Marshal(userURLS)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(resp)
 	}
 }
@@ -219,7 +226,11 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 			return
 		}
 
-		_ = h.Auth(w, r)
+		userID, _ := h.Auth(w, r)
+
+		if uid, err := GetUserIDFromCookie(r); err == nil {
+			userID = uid
+		}
 
 		var buf bytes.Buffer
 
@@ -254,13 +265,6 @@ func (h *URLHandler) ShortURLJSON() http.HandlerFunc {
 		if !utils.IsValidURL(shortenRequest.URL) {
 			http.Error(w, "Invalid URL.", http.StatusBadRequest)
 			return
-		}
-
-		var userID int
-		if uid, err := GetUserIDFromCookie(r); err == nil {
-			userID = uid
-		} else {
-			userID = h.GetUserID() + 1
 		}
 
 		urlHash := utils.HashURL(shortenRequest.URL)
@@ -301,7 +305,11 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 			return
 		}
 
-		_ = h.Auth(w, r)
+		userID, _ := h.Auth(w, r)
+
+		if uid, err := GetUserIDFromCookie(r); err == nil {
+			userID = uid
+		}
 
 		var buf bytes.Buffer
 
@@ -340,13 +348,6 @@ func (h *URLHandler) ShortURLBatch() http.HandlerFunc {
 			if !utils.IsValidURL(val.OriginalURL) {
 				http.Error(w, "Invalid URL.", http.StatusBadRequest)
 				return
-			}
-
-			var userID int
-			if uid, err := GetUserIDFromCookie(r); err == nil {
-				userID = uid
-			} else {
-				userID = h.GetUserID() + 1
 			}
 
 			urlHash := utils.HashURL(val.OriginalURL)
