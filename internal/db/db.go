@@ -25,7 +25,7 @@ func (pdb *PostgresDB) Get(shortURL string) (storage.Store, bool) {
 		return storage.Store{}, false
 	}
 	var store storage.Store
-	err := qr.Scan(&store)
+	err := qr.Scan(&store.OriginalURL, &store.UserID)
 	if err != nil {
 		return storage.Store{}, false
 	}
