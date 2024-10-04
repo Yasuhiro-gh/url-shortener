@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-const TOKEN_EXP = time.Minute * 10
-const SECRET_KEY = "yasuhiro_gh"
+const TOKENEXP = time.Minute * 10
+const SECRETKEY = "yasuhiro_gh"
 
 type Claims struct {
 	jwt.RegisteredClaims
@@ -18,11 +18,11 @@ type Claims struct {
 func BuildJWTString(newUserID int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKENEXP)),
 		},
 		UserID: newUserID,
 	})
-	return token.SignedString([]byte(SECRET_KEY))
+	return token.SignedString([]byte(SECRETKEY))
 }
 
 func GetUserID(tokenString string) (int, error) {
@@ -32,7 +32,7 @@ func GetUserID(tokenString string) (int, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
-		return []byte(SECRET_KEY), nil
+		return []byte(SECRETKEY), nil
 	})
 
 	if err != nil {

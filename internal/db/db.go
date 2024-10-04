@@ -43,6 +43,9 @@ func (pdb *PostgresDB) Set(shortURL string, store *storage.Store) error {
 
 func (pdb *PostgresDB) GetUserURLS(ctx context.Context, userID int) ([]storage.Store, error) {
 	qc, err := pdb.DB.QueryContext(ctx, "SELECT original_url, short_url FROM urls WHERE user_id = $1", userID)
+	if qc.Err() != nil {
+		return nil, qc.Err()
+	}
 	if err != nil {
 		return nil, err
 	}
