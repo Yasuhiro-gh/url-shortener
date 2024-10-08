@@ -53,6 +53,7 @@ func (us *URLStorage) Set(key string, value *Store) error {
 func (us *URLStorage) Delete(key string, userID int) error {
 	if url, ok := us.urls[key]; ok && url.UserID == userID {
 		url.DeletedFlag = true
+		us.urls[key] = url
 		return nil
 	}
 	return errors.New("wrong user")
