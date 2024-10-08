@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,7 +39,8 @@ func URLRouter(ctx context.Context, us *storage.URLS, pdb *db.PostgresDB) chi.Ro
 	r.Handle("/{id}", gzipMiddleware(logger.Logging(uh.GetShortURL())))
 	r.Handle("/api/shorten", gzipMiddleware(logger.Logging(uh.ShortURLJSON())))
 	r.Handle("/api/shorten/batch", gzipMiddleware(logger.Logging(uh.ShortURLBatch())))
-	r.Handle("/api/user/urls", gzipMiddleware(logger.Logging(uh.UserURLS())))
+	r.Get("/api/user/urls", gzipMiddleware(logger.Logging(uh.UserURLS())))
+	r.Delete("/api/user/urls", gzipMiddleware(logger.Logging(uh.DeleteUserURLS())))
 	r.Handle("/ping", logger.Logging(CheckDBConnection(ctx, pdb)))
 	return r
 }
@@ -166,6 +168,11 @@ func (h *URLHandler) GetShortURL() http.HandlerFunc {
 			return
 		}
 
+		if urlStore.DeletedFlag {
+			http.Error(w, "Short URL already deleted.", http.StatusGone)
+			return
+		}
+
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("Location", urlStore.OriginalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
@@ -174,10 +181,6 @@ func (h *URLHandler) GetShortURL() http.HandlerFunc {
 
 func (h *URLHandler) UserURLS() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Only GET method is supported.", http.StatusBadRequest)
-		}
-
 		userID, err := h.Auth(w, r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -211,6 +214,116 @@ func (h *URLHandler) UserURLS() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(resp)
+	}
+}
+
+func (h *URLHandler) DeleteUserURLS() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+			http.Error(w, "Only JSON content type is supported.", http.StatusBadRequest)
+			return
+		}
+
+		userID, _ := h.Auth(w, r)
+		if uid, err := GetUserIDFromCookie(r); err == nil {
+			userID = uid
+		}
+
+		var buf bytes.Buffer
+		_, err := buf.ReadFrom(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var shortURLS []string
+		if err := json.Unmarshal(buf.Bytes(), &shortURLS); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		var mu sync.RWMutex
+		var wg sync.WaitGroup
+
+		doneCh := make(chan struct{})
+
+		defer close(doneCh)
+
+		generator := func(doneCh chan struct{}, input []string) chan string {
+			inputCh := make(chan string)
+
+			go func() {
+				defer close(inputCh)
+
+				for _, shortURL := range input {
+					select {
+					case <-doneCh:
+						return
+					case inputCh <- shortURL:
+					}
+				}
+			}()
+
+			return inputCh
+		}
+
+		fanOut := func(doneCh chan struct{}, inputCh chan string) []chan string {
+			numWorkers := 5
+			channels := make([]chan string, numWorkers)
+
+			for i := 0; i < numWorkers; i++ {
+				channels[i] = inputCh
+			}
+
+			return channels
+		}
+
+		fanIn := func(doneCh chan struct{}, deletedChs ...chan string) chan string {
+			finalCh := make(chan string)
+
+			for _, ch := range deletedChs {
+				chClosure := ch
+
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+
+					for data := range chClosure {
+						select {
+						case <-doneCh:
+							return
+						case finalCh <- data:
+						}
+					}
+				}()
+			}
+
+			go func() {
+				wg.Wait()
+				close(finalCh)
+			}()
+
+			return finalCh
+		}
+
+		input := generator(doneCh, shortURLS)
+
+		channels := fanOut(doneCh, input)
+
+		urlsCh := fanIn(doneCh, channels...)
+
+		for url := range urlsCh {
+			mu.Lock()
+			err := h.Delete(url, userID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				mu.Unlock()
+				return
+			}
+			mu.Unlock()
+		}
+
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

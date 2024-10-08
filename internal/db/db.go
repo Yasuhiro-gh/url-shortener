@@ -20,12 +20,12 @@ func NewPostgresDB() *PostgresDB {
 }
 
 func (pdb *PostgresDB) Get(shortURL string) (storage.Store, bool) {
-	qr := pdb.DB.QueryRow("SELECT original_url, user_id FROM urls WHERE short_url = $1", shortURL)
+	qr := pdb.DB.QueryRow("SELECT original_url, user_id, is_deleted FROM urls WHERE short_url = $1", shortURL)
 	if qr.Err() != nil {
 		return storage.Store{}, false
 	}
 	var store storage.Store
-	err := qr.Scan(&store.OriginalURL, &store.UserID)
+	err := qr.Scan(&store.OriginalURL, &store.UserID, &store.DeletedFlag)
 	if err != nil {
 		return storage.Store{}, false
 	}
@@ -39,6 +39,14 @@ func (pdb *PostgresDB) Set(shortURL string, store *storage.Store) error {
 		return errors.New(pgerrcode.UniqueViolation)
 	}
 	return err
+}
+
+func (pdb *PostgresDB) Delete(shortURL string, userID int) error {
+	_, err := pdb.DB.Exec("UPDATE urls SET is_deleted = true WHERE short_url = $1 AND user_id = $2", shortURL, userID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (pdb *PostgresDB) GetUserURLS(ctx context.Context, userID int) ([]storage.Store, error) {
@@ -85,7 +93,7 @@ func CreateDatabaseTable(pdb *PostgresDB) error {
 	if isTableExist(pdb, "urls") {
 		return nil
 	}
-	_, err := pdb.DB.Exec(`CREATE TABLE urls("original_url" TEXT UNIQUE, "short_url" TEXT, "user_id" INTEGER)`)
+	_, err := pdb.DB.Exec(`CREATE TABLE urls("original_url" TEXT UNIQUE, "short_url" TEXT, "user_id" INTEGER, "is_deleted" BOOLEAN DEFAULT FALSE)`)
 	if err != nil {
 		return err
 	}

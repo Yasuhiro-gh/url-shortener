@@ -1,11 +1,15 @@
 package storage
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type Store struct {
 	OriginalURL string
 	ShortURL    string
-	UserID      int `json:"-"`
+	UserID      int  `json:"-"`
+	DeletedFlag bool `json:"is_deleted"`
 }
 
 type URLStorage struct {
@@ -46,6 +50,14 @@ func (us *URLStorage) Set(key string, value *Store) error {
 	return nil
 }
 
+func (us *URLStorage) Delete(key string, userID int) error {
+	if url, ok := us.urls[key]; ok && url.UserID == userID {
+		url.DeletedFlag = true
+		return nil
+	}
+	return errors.New("wrong user")
+}
+
 type URLS struct {
 	storage URLStorages
 }
@@ -69,4 +81,8 @@ func (us *URLS) GetUserURLS(ctx context.Context, uid int) ([]Store, error) {
 
 func (us *URLS) Set(shortURL string, value *Store) error {
 	return us.storage.Set(shortURL, value)
+}
+
+func (us *URLS) Delete(shortURL string, userID int) error {
+	return us.storage.Delete(shortURL, userID)
 }
